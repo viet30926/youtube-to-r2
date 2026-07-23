@@ -33,19 +33,21 @@ jobs:
         run: |
           mkdir -p ./downloaded_audio
 
-      - name: ⚙️ Cài đặt FFmpeg, Python, yt-dlp & Deno
+      - name: ⚙️ Cài đặt FFmpeg, Python, Deno & Công cụ Bypass
         run: |
           set -eo pipefail
           sudo apt-get update
           sudo apt-get install -y ffmpeg python3-pip
-          pip install --upgrade pip
-          pip install --upgrade "yt-dlp[default]"
           
-          # Cài đặt Deno (JS Runtime hỗ trợ giải mã thuật toán YouTube)
+          # Cài đặt yt-dlp kèm curl-cffi để giả mạo TLS Fingerprint (Chống phát hiện Bot cực mạnh)
+          pip install --upgrade pip
+          pip install --upgrade "yt-dlp[default,curl-cffi]"
+          
+          # Cài đặt Deno xử lý Javascript mã hóa của YouTube
           curl -fsSL https://deno.land/install.sh | sh
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
-      - name: ⬇️ Tải Audio & Chuẩn hoá Metadata
+      - name: ⬇️ Tải Audio & Tối ưu Metadata
         id: download
         env:
           YOUTUBE_URL: ${{ github.event.client_payload.youtube_url || inputs.youtube_url }}
@@ -62,20 +64,21 @@ jobs:
 
           cd downloaded_audio
           
-          # Giải mã Cookie trực tiếp tại bước này
+          # Nạp và kiểm tra Cookie an toàn
           COOKIE_ARG=""
           if [ -n "$COOKIE_BASE64" ]; then
             echo "$COOKIE_BASE64" | base64 -d > cookies.txt
-            if [ -s cookies.txt ]; then
+            if grep -q "youtube.com" cookies.txt; then
               COOKIE_ARG="--cookies cookies.txt"
               echo "✅ Đã nạp Cookie thành công."
             else
-              echo "⚠️ Cảnh báo: File Cookie sau khi giải mã bị rỗng!"
+              echo "⚠️ Cảnh báo: File Cookie không hợp lệ hoặc rỗng!"
             fi
           else
             echo "⚠️ Cảnh báo: Chưa cấu hình Secret YOUTUBE_COOKIES."
           fi
 
+          # Xử lý tên file (Loại bỏ ký tự đặc biệt tránh lỗi Upload)
           if [ -n "$CUSTOM_FILENAME" ]; then
             SAFE_NAME=$(echo "$CUSTOM_FILENAME" | sed -e 's/[^a-zA-Z0-9_.-]/_/g')
             OUTPUT_TEMPLATE="${SAFE_NAME}.%(ext)s"
@@ -85,10 +88,11 @@ jobs:
 
           export PATH="$HOME/.deno/bin:$PATH"
 
-          # Chạy yt-dlp với Cookie và Giả lập Client di động
+          # Chạy yt-dlp với cơ chế Fallback Client (Ưu tiên chất lượng -> Lùi về Bypass nếu bị chặn)
           yt-dlp $COOKIE_ARG \
-            --extractor-args "youtube:player_client=ios,android,mweb" \
+            --extractor-args "youtube:player_client=android,mweb,tv_embedded,web" \
             --remote-components ejs:github \
+            --impersonate \
             -x \
             --audio-format "$AUDIO_FORMAT" \
             --audio-quality 0 \
@@ -101,12 +105,10 @@ jobs:
             -o "$OUTPUT_TEMPLATE" \
             "$YOUTUBE_URL"
           
-          # Xóa ngay file cookies sau khi yt-dlp tải xong
-          rm -f cookies.txt
-          
+          # Xác định file output và MIME Type
           FILE_NAME=$(ls -1 | grep -v "cookies.txt" | head -n 1)
           if [ -z "$FILE_NAME" ]; then
-            echo "❌ Lỗi: Không tìm thấy file âm thanh sau khi tải!"
+            echo "❌ Lỗi: Không tìm thấy file âm thanh sau khi tải. Tiến trình thất bại!"
             exit 1
           fi
           
@@ -135,12 +137,12 @@ jobs:
             --content-type "${{ steps.download.outputs.mimetype }}" \
             --metadata-directive REPLACE
 
-      - name: 🧹 Dọn dẹp an toàn dữ liệu nhạy cảm
+      - name: 🧹 Dọn dẹp tuyệt đối an toàn
         if: always()
         run: |
-          rm -f ./downloaded_audio/cookies.txt
+          rm -rf ./downloaded_audio/cookies.txt
 
-      - name: 🎉 Báo cáo kết quả & Khởi tạo Link
+      - name: 🎉 Báo cáo kết quả 
         env:
           PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
           FILE_NAME: ${{ steps.download.outputs.filename }}
@@ -148,17 +150,15 @@ jobs:
         run: |
           echo "### ✅ Tiến trình hoàn tất thành công!" >> $GITHUB_STEP_SUMMARY
           echo "- **Video gốc:** $TARGET_URL" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tên file:** \`$FILE_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tên file tải lên:** \`$FILE_NAME\`" >> $GITHUB_STEP_SUMMARY
           
           if [ -n "$PUBLIC_DOMAIN" ]; then
             CLEAN_DOMAIN=$(echo "$PUBLIC_DOMAIN" | sed 's/\/$//')
             ENCODED_FILE=$(jq -nr --arg v "$FILE_NAME" '$v|@uri')
             PUBLIC_URL="$CLEAN_DOMAIN/$ENCODED_FILE"
             
-            echo "- **Link Stream trực tiếp:** [▶️ Bấm để Nghe / Tải]($PUBLIC_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "- **Link Nghe / Tải trực tiếp:** [▶️ Truy cập ngay]($PUBLIC_URL)" >> $GITHUB_STEP_SUMMARY
             echo "- **URL Raw:** \`$PUBLIC_URL\`" >> $GITHUB_STEP_SUMMARY
           else
-            echo "- **Link trực tiếp:** ⚠️ Bạn chưa cấu hình biến \`R2_PUBLIC_DOMAIN\` trong Secrets." >> $GITHUB_STEP_SUMMARY
+            echo "- ⚠️ **Chưa cấu hình** biến \`R2_PUBLIC_DOMAIN\`." >> $GITHUB_STEP_SUMMARY
           fi
-          
-          echo "- **Trạng thái:** Dữ liệu thừa đã được dọn sạch 🧹" >> $GITHUB_STEP_SUMMARY
