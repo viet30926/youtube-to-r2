@@ -30,12 +30,16 @@ jobs:
 
     steps:
       - name: 🧹 Chuẩn bị không gian làm việc
-        run: mkdir -p ./downloaded_audio
+        run: |
+          mkdir -p ./downloaded_audio
 
       - name: 🍪 Giải mã YouTube Cookies từ Base64
         env:
           COOKIE_BASE64: ${{ secrets.YOUTUBE_COOKIES }}
         run: |
+          # Thiết lập cơ chế tự động dọn dẹp file nhạy cảm khi kết thúc job (Dù thành công hay lỗi)
+          trap 'rm -f ./downloaded_audio/cookies.txt' EXIT
+
           if [ -n "$COOKIE_BASE64" ]; then
             echo "$COOKIE_BASE64" | base64 -d > ./downloaded_audio/cookies.txt
             echo "✅ Đã nạp Cookie thành công."
@@ -43,14 +47,15 @@ jobs:
             echo "⚠️ Cảnh báo: Chưa cấu hình Secret YOUTUBE_COOKIES."
           fi
 
-      - name: ⚙️ Cài đặt FFmpeg, Python, yt-dlp & Deno (Fix JS Runtime)
+      - name: ⚙️ Cài đặt FFmpeg, Python, yt-dlp & Deno
         run: |
+          set -eo pipefail
           sudo apt-get update
           sudo apt-get install -y ffmpeg python3-pip
           pip install --upgrade pip
           pip install --upgrade "yt-dlp[default]"
           
-          # Cài đặt Deno (môi trường JavaScript mặc định được yt-dlp hỗ trợ để vượt bảo mật)
+          # Cài đặt Deno (môi trường JavaScript cho yt-dlp vượt cơ chế bảo mật mới)
           curl -fsSL https://deno.land/install.sh | sh
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
@@ -61,6 +66,8 @@ jobs:
           CUSTOM_FILENAME: ${{ github.event.client_payload.custom_filename || inputs.custom_filename }}
           AUDIO_FORMAT: ${{ github.event.client_payload.audio_format || inputs.audio_format || 'mp3' }}
         run: |
+          set -eo pipefail
+
           if [ -z "$YOUTUBE_URL" ]; then
             echo "❌ Lỗi: Không tìm thấy đường dẫn YouTube!"
             exit 1
@@ -122,6 +129,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
+          set -eo pipefail
           aws s3 cp ./downloaded_audio/${{ steps.download.outputs.filename }} s3://${{ secrets.R2_BUCKET_NAME }}/ \
             --endpoint-url ${{ secrets.R2_ENDPOINT_URL }} \
             --content-type "${{ steps.download.outputs.mimetype }}" \
@@ -138,7 +146,7 @@ jobs:
           echo "- **Tên file:** \`$FILE_NAME\`" >> $GITHUB_STEP_SUMMARY
           
           if [ -n "$PUBLIC_DOMAIN" ]; then
-            CLEAN_DOMAIN=$(echo "$PUBLIC_DOMAIN" | sed 's/\/$//')
+            CLEAN_DOMAIN=$(echo "$PUBLIC_DOMAIN" \vert{} sed 's/\/$//')
             ENCODED_FILE=$(jq -nr --arg v "$FILE_NAME" '$v|@uri')
             PUBLIC_URL="$CLEAN_DOMAIN/$ENCODED_FILE"
             
