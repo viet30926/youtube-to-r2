@@ -4,52 +4,110 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>⚡ YouTube to R2 Cloud Studio</title>
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        tailwind.config = { darkMode: 'class', theme: { extend: { colors: { darker: '#09090b', card: '#121216', border: '#27272a' } } } }
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darker: '#09090b',
+                        card: '#121216',
+                        border: '#27272a'
+                    }
+                }
+            }
+        }
     </script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>body { font-family: 'Plus Jakarta Sans', sans-serif; }</style>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
 </head>
-<body class="bg-darker text-zinc-100 min-h-screen flex flex-col items-center justify-center p-4">
+<body class="bg-darker text-zinc-100 min-h-screen flex flex-col items-center justify-center p-4 selection:bg-indigo-500 selection:text-white">
 
-    <!-- Toast Notification Container -->
-    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col space-y-2.5 pointer-events-none max-w-sm w-full px-4 sm:px-0"></div>
 
     <main class="w-full max-w-md">
+        <!-- Header -->
         <div class="flex items-center space-x-3 mb-6 px-1">
             <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 100-6 3 3 0 000 6z"/></svg>
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 100-6 3 3 0 000 6z"/>
+                </svg>
             </div>
             <div>
-                <h1 class="text-lg font-bold text-white">R2 Media Studio</h1>
+                <h1 class="text-lg font-bold text-white tracking-tight">R2 Media Studio</h1>
                 <p class="text-xs text-zinc-400">Hệ thống phân phối đa thiết bị</p>
             </div>
         </div>
 
-        <div class="bg-[#121216] border border-[#27272a] rounded-2xl p-6 shadow-2xl">
-            <form id="download-form" onsubmit="event.preventDefault(); triggerDownload();" class="space-y-4">
+        <!-- Form Card -->
+        <div class="bg-card border border-border rounded-2xl p-6 shadow-2xl backdrop-blur-xl">
+            <form id="download-form" class="space-y-4" novalidate>
+                <!-- Input: URL -->
                 <div>
-                    <label class="block text-xs font-medium text-zinc-400 mb-1.5">🔗 Đường dẫn YouTube</label>
-                    <input type="url" id="yt-url" required placeholder="https://www.youtube.com/watch?v=..." class="w-full bg-darker text-sm text-white px-3.5 py-3 rounded-xl border border-zinc-700 focus:border-indigo-500 focus:outline-none transition">
+                    <label for="yt-url" class="block text-xs font-medium text-zinc-400 mb-1.5">🔗 Đường dẫn YouTube <span class="text-rose-500">*</span></label>
+                    <input 
+                        type="url" 
+                        id="yt-url" 
+                        name="youtube_url"
+                        required 
+                        autocomplete="off"
+                        placeholder="https://www.youtube.com/watch?v=..." 
+                        class="w-full bg-darker text-sm text-white px-3.5 py-3 rounded-xl border border-zinc-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none transition placeholder-zinc-600"
+                    >
                 </div>
 
+                <!-- Input: Custom Filename -->
                 <div>
-                    <label class="block text-xs font-medium text-zinc-400 mb-1.5">📝 Đổi tên file tùy chỉnh <span class="text-zinc-600">(Không bắt buộc)</span></label>
-                    <input type="text" id="custom-name" placeholder="VD: podcast_tap_1" class="w-full bg-darker text-sm text-white px-3.5 py-3 rounded-xl border border-zinc-700 focus:border-indigo-500 focus:outline-none transition">
+                    <label for="custom-name" class="block text-xs font-medium text-zinc-400 mb-1.5">📝 Đổi tên file tùy chỉnh <span class="text-zinc-600">(Không bắt buộc)</span></label>
+                    <input 
+                        type="text" 
+                        id="custom-name" 
+                        name="custom_filename"
+                        autocomplete="off"
+                        placeholder="VD: podcast_tap_1" 
+                        class="w-full bg-darker text-sm text-white px-3.5 py-3 rounded-xl border border-zinc-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none transition placeholder-zinc-600"
+                    >
                 </div>
 
+                <!-- Select: Audio Format -->
                 <div>
-                    <label class="block text-xs font-medium text-zinc-400 mb-1.5">🎵 Định dạng âm thanh</label>
-                    <select id="audio-format" class="w-full bg-darker text-sm text-white px-3.5 py-3 rounded-xl border border-zinc-700 focus:border-indigo-500 focus:outline-none transition">
+                    <label for="audio-format" class="block text-xs font-medium text-zinc-400 mb-1.5">🎵 Định dạng âm thanh</label>
+                    <select 
+                        id="audio-format" 
+                        name="audio_format"
+                        class="w-full bg-darker text-sm text-white px-3.5 py-3 rounded-xl border border-zinc-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none transition cursor-pointer"
+                    >
                         <option value="mp3">MP3 (Phổ biến)</option>
                         <option value="m4a">M4A (Chất lượng cao)</option>
                         <option value="wav">WAV (Không nén)</option>
                     </select>
                 </div>
 
-                <button type="submit" id="submit-btn" class="w-full mt-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-2">
-                    <svg id="btn-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                <!-- Submit Button -->
+                <button 
+                    type="submit" 
+                    id="submit-btn" 
+                    class="w-full mt-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] disabled:opacity-60 disabled:pointer-events-none disabled:scale-100 text-white font-semibold rounded-xl shadow-lg shadow-indigo-600/25 transition duration-150 flex items-center justify-center space-x-2"
+                >
+                    <!-- Download Icon -->
+                    <svg id="icon-download" class="w-5 h-5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+
+                    <!-- Loading Spinner Icon (Hidden by default) -->
+                    <svg id="icon-spinner" class="w-5 h-5 animate-spin hidden" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+
                     <span id="btn-text">Tải lên R2 Ngay</span>
                 </button>
             </form>
@@ -57,73 +115,142 @@
     </main>
 
     <script>
+        // --- Safe Toast Notification (Anti-XSS) ---
         function showToast(message, type = "success") {
             const container = document.getElementById("toast-container");
             const toast = document.createElement("div");
-            const bgClass = type === "success" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-rose-500/10 border-rose-500/20 text-rose-400";
-            toast.className = `pointer-events-auto px-4 py-3 rounded-xl border backdrop-blur-md shadow-lg text-xs font-semibold flex items-center space-x-2 transition-all duration-300 opacity-0 translate-y-2 ${bgClass}`;
-            toast.innerHTML = `<span>${message}</span>`;
+            
+            const isSuccess = type === "success";
+            const bgClass = isSuccess 
+                ? "bg-emerald-950/90 border-emerald-500/30 text-emerald-300" 
+                : "bg-rose-950/90 border-rose-500/30 text-rose-300";
+            
+            toast.className = `pointer-events-auto px-4 py-3 rounded-xl border backdrop-blur-md shadow-xl text-xs font-medium flex items-center space-x-2.5 transition-all duration-300 opacity-0 translate-y-3 ${bgClass}`;
+            
+            // Icon SVG
+            const iconSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            iconSvg.setAttribute("class", "w-4 h-4 shrink-0");
+            iconSvg.setAttribute("fill", "none");
+            iconSvg.setAttribute("viewBox", "0 0 24 24");
+            iconSvg.setAttribute("stroke", "currentColor");
+            
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("stroke-linecap", "round");
+            path.setAttribute("stroke-linejoin", "round");
+            path.setAttribute("stroke-width", "2");
+            
+            if (isSuccess) {
+                path.setAttribute("d", "M5 13l4 4L19 7");
+            } else {
+                path.setAttribute("d", "M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z");
+            }
+            iconSvg.appendChild(path);
+            toast.appendChild(iconSvg);
+
+            // Safe Text Node
+            const textNode = document.createElement("span");
+            textNode.textContent = message;
+            toast.appendChild(textNode);
+
             container.appendChild(toast);
-            setTimeout(() => { toast.classList.remove("opacity-0", "translate-y-2"); }, 10);
-            setTimeout(() => { toast.classList.add("opacity-0", "translate-y-2"); setTimeout(() => toast.remove(), 300); }, 4000);
+
+            // Animation Frame
+            requestAnimationFrame(() => {
+                toast.classList.remove("opacity-0", "translate-y-3");
+            });
+
+            // Auto Dismiss
+            setTimeout(() => {
+                toast.classList.add("opacity-0", "translate-y-3");
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
         }
 
-        async function triggerDownload() {
+        // --- Client-side YouTube URL Validation ---
+        function isValidYouTubeUrl(url) {
+            const regex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
+            return regex.test(url);
+        }
+
+        // --- Event Listener Binding ---
+        document.addEventListener("DOMContentLoaded", () => {
+            const form = document.getElementById("download-form");
             const urlInput = document.getElementById("yt-url");
             const nameInput = document.getElementById("custom-name");
             const formatSelect = document.getElementById("audio-format");
-
-            const url = urlInput.value.trim();
-            const filename = nameInput.value.trim();
-            const format = formatSelect.value;
-
-            const btn = document.getElementById("submit-btn");
+            
+            const submitBtn = document.getElementById("submit-btn");
             const btnText = document.getElementById("btn-text");
-            const btnIcon = document.getElementById("btn-icon");
+            const iconDownload = document.getElementById("icon-download");
+            const iconSpinner = document.getElementById("icon-spinner");
 
-            btn.disabled = true;
-            btn.classList.add("opacity-70", "cursor-not-allowed");
-            btnIcon.outerHTML = `<svg id="btn-icon" class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
-            btnText.innerText = "Đang truyền lệnh...";
+            form.addEventListener("submit", async (e) => {
+                e.preventDefault();
 
-            try {
-                const response = await fetch('/api/download', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        youtube_url: url,
-                        custom_filename: filename,
-                        audio_format: format
-                    })
-                });
+                const url = urlInput.value.trim();
+                const filename = nameInput.value.trim();
+                const format = formatSelect.value;
 
-                const contentType = response.headers.get("content-type");
-                let data;
-                if (contentType && contentType.includes("application/json")) {
-                    data = await response.json();
-                } else {
-                    throw new Error(`Lỗi phản hồi máy chủ (Mã trạng thái: ${response.status})`);
+                // 1. Client-side Checks
+                if (!url) {
+                    showToast("Vui lòng nhập đường dẫn YouTube!", "error");
+                    urlInput.focus();
+                    return;
                 }
 
-                if (!response.ok) {
-                    throw new Error(data.error || "Không thể xử lý yêu cầu");
+                if (!isValidYouTubeUrl(url)) {
+                    showToast("Đường dẫn YouTube không hợp lệ!", "error");
+                    urlInput.focus();
+                    return;
                 }
 
-                showToast("Đã kích hoạt thành công! Hệ thống đang tải ngầm.", "success");
-                document.getElementById("download-form").reset();
+                // 2. UI Loading State
+                submitBtn.disabled = true;
+                iconDownload.classList.add("hidden");
+                iconSpinner.classList.remove("hidden");
+                btnText.textContent = "Đang truyền lệnh...";
 
-            } catch (error) {
-                showToast(`Thất bại: ${error.message}`, "error");
-            } finally {
-                btn.disabled = false;
-                btn.classList.remove("opacity-70", "cursor-not-allowed");
-                const currentIcon = document.getElementById("submit-btn").querySelector("svg");
-                if (currentIcon) {
-                    currentIcon.outerHTML = `<svg id="btn-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>`;
+                try {
+                    const response = await fetch('/api/download', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            youtube_url: url,
+                            custom_filename: filename,
+                            audio_format: format
+                        })
+                    });
+
+                    const contentType = response.headers.get("content-type");
+                    let data;
+
+                    if (contentType && contentType.includes("application/json")) {
+                        data = await response.json();
+                    } else {
+                        throw new Error(`Lỗi phản hồi máy chủ (${response.status})`);
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(data.error || "Không thể xử lý yêu cầu");
+                    }
+
+                    showToast("Đã kích hoạt thành công! Hệ thống đang tải ngầm.", "success");
+                    form.reset();
+
+                } catch (error) {
+                    showToast(`Thất bại: ${error.message}`, "error");
+                } finally {
+                    // 3. Reset UI State Safely
+                    submitBtn.disabled = false;
+                    iconSpinner.classList.add("hidden");
+                    iconDownload.classList.remove("hidden");
+                    btnText.textContent = "Tải lên R2 Ngay";
                 }
-                btnText.innerText = "Tải lên R2 Ngay";
-            }
-        }
+            });
+        });
     </script>
 </body>
 </html>
