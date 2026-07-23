@@ -1,6 +1,8 @@
 name: ⚡ Enterprise YouTube to R2 Downloader
 
 on:
+  repository_dispatch:
+    types: [start-download]
   workflow_dispatch:
     inputs:
       youtube_url:
@@ -30,21 +32,46 @@ jobs:
       - name: 🧹 Chuẩn bị không gian làm việc
         run: mkdir -p ./downloaded_audio
 
-      - name: ⚙️ Cài đặt yt-dlp (Sử dụng FFmpeg có sẵn của GitHub)
+      - name: 🍪 Giải mã YouTube Cookies từ Base64
+        env:
+          COOKIE_BASE64: ${{ secrets.YOUTUBE_COOKIES }}
         run: |
+          if [ -n "$COOKIE_BASE64" ]; then
+            echo "$COOKIE_BASE64" | base64 -d > ./downloaded_audio/cookies.txt
+            echo "✅ Đã nạp Cookie thành công để vượt qua cơ chế chống bot của YouTube."
+          else
+            echo "⚠️ Cảnh báo: Chưa cấu hình Secret YOUTUBE_COOKIES. Quá trình tải có thể bị YouTube chặn."
+          fi
+
+      - name: ⚙️ Cài đặt yt-dlp & FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
 
       - name: ⬇️ Tải Audio & Chuẩn hoá Metadata
         id: download
         env:
-          YOUTUBE_URL: ${{ inputs.youtube_url }}
-          CUSTOM_FILENAME: ${{ inputs.custom_filename }}
-          AUDIO_FORMAT: ${{ inputs.audio_format }}
+          # Tự động nhận diện input từ cả Cloudflare Pages (dispatch) lẫn chạy thủ công trên GitHub
+          YOUTUBE_URL: ${{ github.event.client_payload.youtube_url || inputs.youtube_url }}
+          CUSTOM_FILENAME: ${{ github.event.client_payload.custom_filename || inputs.custom_filename }}
+          AUDIO_FORMAT: ${{ github.event.client_payload.audio_format || inputs.audio_format || 'mp3' }}
         run: |
+          if [ -z "$YOUTUBE_URL" ]; then
+            echo "❌ Lỗi: Không tìm thấy đường dẫn YouTube!"
+            exit 1
+          fi
+
           cd downloaded_audio
           
-          # 1. Lọc và chuẩn hoá tên file
+          # 1. Kiểm tra file cookies để kích hoạt cờ vượt bot
+          COOKIE_ARG=""
+          if [ -f "cookies.txt" ]; then
+            COOKIE_ARG="--cookies cookies.txt"
+          fi
+
+          # 2. Lọc và chuẩn hoá tên file
           if [ -n "$CUSTOM_FILENAME" ]; then
             SAFE_NAME=$(echo "$CUSTOM_FILENAME" | sed -e 's/[^a-zA-Z0-9_.-]/_/g')
             OUTPUT_TEMPLATE="${SAFE_NAME}.%(ext)s"
@@ -52,8 +79,8 @@ jobs:
             OUTPUT_TEMPLATE="%(title)s_[%(id)s].%(ext)s"
           fi
 
-          # 2. Tải file (Bổ sung force-ipv4 chống Block từ YouTube)
-          yt-dlp -x \
+          # 3. Tải file (Bổ sung cờ cookies và force-ipv4 chống Block từ YouTube)
+          yt-dlp $COOKIE_ARG -x \
             --audio-format "$AUDIO_FORMAT" \
             --audio-quality 0 \
             --restrict-filenames \
@@ -65,23 +92,25 @@ jobs:
             -o "$OUTPUT_TEMPLATE" \
             "$YOUTUBE_URL"
           
-          # 3. Lấy tên file chính xác
-          FILE_NAME=$(ls -1 | head -n 1)
+          # 4. Lấy tên file chính xác
+          FILE_NAME=$(ls -1 | grep -v "cookies.txt" | head -n 1)
           if [ -z "$FILE_NAME" ]; then
             echo "❌ Lỗi: Không tìm thấy file âm thanh sau khi tải!"
             exit 1
           fi
           
-          # 4. Xác định Content-Type để nghe trực tiếp trên trình duyệt
+          # 5. Xác định Content-Type để nghe trực tiếp trên trình duyệt
           if [ "$AUDIO_FORMAT" = "mp3" ]; then
             MIME_TYPE="audio/mpeg"
           elif [ "$AUDIO_FORMAT" = "m4a" ]; then
             MIME_TYPE="audio/mp4"
           elif [ "$AUDIO_FORMAT" = "wav" ]; then
             MIME_TYPE="audio/wav"
+          else
+            MIME_TYPE="application/octet-stream"
           fi
           
-          # 5. Xuất các biến ra Github Env
+          # 6. Xuất các biến ra Github Env
           echo "filename=$FILE_NAME" >> $GITHUB_OUTPUT
           echo "mimetype=$MIME_TYPE" >> $GITHUB_OUTPUT
 
@@ -91,9 +120,8 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          aws s3 cp ./downloaded_audio/ s3://${{ secrets.R2_BUCKET_NAME }}/ \
+          aws s3 cp ./downloaded_audio/${{ steps.download.outputs.filename }} s3://${{ secrets.R2_BUCKET_NAME }}/ \
             --endpoint-url ${{ secrets.R2_ENDPOINT_URL }} \
-            --recursive \
             --content-type "${{ steps.download.outputs.mimetype }}" \
             --metadata-directive REPLACE
 
@@ -101,14 +129,15 @@ jobs:
         env:
           PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
           FILE_NAME: ${{ steps.download.outputs.filename }}
+          TARGET_URL: ${{ github.event.client_payload.youtube_url || inputs.youtube_url }}
         run: |
           echo "### ✅ Tiến trình hoàn tất thành công!" >> $GITHUB_STEP_SUMMARY
-          echo "- **Video gốc:** ${{ inputs.youtube_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Video gốc:** $TARGET_URL" >> $GITHUB_STEP_SUMMARY
           echo "- **Tên file:** \`$FILE_NAME\`" >> $GITHUB_STEP_SUMMARY
           
           # Xử lý Link Public (URL Encoding giúp link không bị gãy khi có ký tự đặc biệt)
           if [ -n "$PUBLIC_DOMAIN" ]; then
-            CLEAN_DOMAIN=$(echo "$PUBLIC_DOMAIN" | sed 's/\/$//')
+            CLEAN_DOMAIN=$(echo "$PUBLIC_DOMAIN" \vert{} sed 's/\/$//')
             ENCODED_FILE=$(jq -nr --arg v "$FILE_NAME" '$v|@uri')
             PUBLIC_URL="$CLEAN_DOMAIN/$ENCODED_FILE"
             
