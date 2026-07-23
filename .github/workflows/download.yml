@@ -38,22 +38,21 @@ jobs:
         run: |
           if [ -n "$COOKIE_BASE64" ]; then
             echo "$COOKIE_BASE64" | base64 -d > ./downloaded_audio/cookies.txt
-            echo "✅ Đã nạp Cookie thành công để vượt qua cơ chế chống bot của YouTube."
+            echo "✅ Đã nạp Cookie thành công."
           else
-            echo "⚠️ Cảnh báo: Chưa cấu hình Secret YOUTUBE_COOKIES. Quá trình tải có thể bị YouTube chặn."
+            echo "⚠️ Cảnh báo: Chưa cấu hình Secret YOUTUBE_COOKIES."
           fi
 
-      - name: ⚙️ Cài đặt yt-dlp & FFmpeg
+      - name: ⚙️ Cài đặt Python, FFmpeg, Node.js & yt-dlp [default] (Fix N-Challenge)
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
-          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-          sudo chmod a+rx /usr/local/bin/yt-dlp
+          sudo apt-get install -y ffmpeg nodejs python3-pip
+          pip install --upgrade pip
+          pip install --upgrade "yt-dlp[default]"
 
       - name: ⬇️ Tải Audio & Chuẩn hoá Metadata
         id: download
         env:
-          # Tự động nhận diện input từ cả Cloudflare Pages (dispatch) lẫn chạy thủ công trên GitHub
           YOUTUBE_URL: ${{ github.event.client_payload.youtube_url || inputs.youtube_url }}
           CUSTOM_FILENAME: ${{ github.event.client_payload.custom_filename || inputs.custom_filename }}
           AUDIO_FORMAT: ${{ github.event.client_payload.audio_format || inputs.audio_format || 'mp3' }}
@@ -65,13 +64,11 @@ jobs:
 
           cd downloaded_audio
           
-          # 1. Kiểm tra file cookies để kích hoạt cờ vượt bot
           COOKIE_ARG=""
           if [ -f "cookies.txt" ]; then
             COOKIE_ARG="--cookies cookies.txt"
           fi
 
-          # 2. Lọc và chuẩn hoá tên file
           if [ -n "$CUSTOM_FILENAME" ]; then
             SAFE_NAME=$(echo "$CUSTOM_FILENAME" | sed -e 's/[^a-zA-Z0-9_.-]/_/g')
             OUTPUT_TEMPLATE="${SAFE_NAME}.%(ext)s"
@@ -79,8 +76,10 @@ jobs:
             OUTPUT_TEMPLATE="%(title)s_[%(id)s].%(ext)s"
           fi
 
-          # 3. Tải file (Bổ sung cờ cookies và force-ipv4 chống Block từ YouTube)
-          yt-dlp $COOKIE_ARG -x \
+          # Thêm --remote-components ejs:github để yt-dlp tự động giải mã thuật toán mới của YouTube
+          yt-dlp $COOKIE_ARG \
+            --remote-components ejs:github \
+            -x \
             --audio-format "$AUDIO_FORMAT" \
             --audio-quality 0 \
             --restrict-filenames \
@@ -92,14 +91,12 @@ jobs:
             -o "$OUTPUT_TEMPLATE" \
             "$YOUTUBE_URL"
           
-          # 4. Lấy tên file chính xác
           FILE_NAME=$(ls -1 | grep -v "cookies.txt" | head -n 1)
           if [ -z "$FILE_NAME" ]; then
             echo "❌ Lỗi: Không tìm thấy file âm thanh sau khi tải!"
             exit 1
           fi
           
-          # 5. Xác định Content-Type để nghe trực tiếp trên trình duyệt
           if [ "$AUDIO_FORMAT" = "mp3" ]; then
             MIME_TYPE="audio/mpeg"
           elif [ "$AUDIO_FORMAT" = "m4a" ]; then
@@ -110,7 +107,6 @@ jobs:
             MIME_TYPE="application/octet-stream"
           fi
           
-          # 6. Xuất các biến ra Github Env
           echo "filename=$FILE_NAME" >> $GITHUB_OUTPUT
           echo "mimetype=$MIME_TYPE" >> $GITHUB_OUTPUT
 
@@ -135,9 +131,8 @@ jobs:
           echo "- **Video gốc:** $TARGET_URL" >> $GITHUB_STEP_SUMMARY
           echo "- **Tên file:** \`$FILE_NAME\`" >> $GITHUB_STEP_SUMMARY
           
-          # Xử lý Link Public (URL Encoding giúp link không bị gãy khi có ký tự đặc biệt)
           if [ -n "$PUBLIC_DOMAIN" ]; then
-            CLEAN_DOMAIN=$(echo "$PUBLIC_DOMAIN" \vert{} sed 's/\/$//')
+            CLEAN_DOMAIN=$(echo "$PUBLIC_DOMAIN" | sed 's/\/$//')
             ENCODED_FILE=$(jq -nr --arg v "$FILE_NAME" '$v|@uri')
             PUBLIC_URL="$CLEAN_DOMAIN/$ENCODED_FILE"
             
