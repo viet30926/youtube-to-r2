@@ -43,12 +43,16 @@ jobs:
             echo "⚠️ Cảnh báo: Chưa cấu hình Secret YOUTUBE_COOKIES."
           fi
 
-      - name: ⚙️ Cài đặt Python, FFmpeg, Node.js & yt-dlp [default] (Fix N-Challenge)
+      - name: ⚙️ Cài đặt FFmpeg, Python, yt-dlp & Deno (Fix JS Runtime)
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg nodejs python3-pip
+          sudo apt-get install -y ffmpeg python3-pip
           pip install --upgrade pip
           pip install --upgrade "yt-dlp[default]"
+          
+          # Cài đặt Deno (môi trường JavaScript mặc định được yt-dlp hỗ trợ để vượt bảo mật)
+          curl -fsSL https://deno.land/install.sh | sh
+          echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
       - name: ⬇️ Tải Audio & Chuẩn hoá Metadata
         id: download
@@ -76,7 +80,9 @@ jobs:
             OUTPUT_TEMPLATE="%(title)s_[%(id)s].%(ext)s"
           fi
 
-          # Thêm --remote-components ejs:github để yt-dlp tự động giải mã thuật toán mới của YouTube
+          # Nạp đường dẫn Deno vào biến PATH trong tiến trình chạy
+          export PATH="$HOME/.deno/bin:$PATH"
+
           yt-dlp $COOKIE_ARG \
             --remote-components ejs:github \
             -x \
