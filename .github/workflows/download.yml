@@ -88,11 +88,11 @@ jobs:
 
           export PATH="$HOME/.deno/bin:$PATH"
 
-          # Chạy yt-dlp với cơ chế Fallback Client (Ưu tiên chất lượng -> Lùi về Bypass nếu bị chặn)
+          # Chạy yt-dlp với cơ chế Fallback Client và Impersonate Chrome
           yt-dlp $COOKIE_ARG \
             --extractor-args "youtube:player_client=android,mweb,tv_embedded,web" \
             --remote-components ejs:github \
-            --impersonate \
+            --impersonate chrome \
             -x \
             --audio-format "$AUDIO_FORMAT" \
             --audio-quality 0 \
