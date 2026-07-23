@@ -33,20 +33,6 @@ jobs:
         run: |
           mkdir -p ./downloaded_audio
 
-      - name: 🍪 Giải mã YouTube Cookies từ Base64
-        env:
-          COOKIE_BASE64: ${{ secrets.YOUTUBE_COOKIES }}
-        run: |
-          # Thiết lập cơ chế tự động dọn dẹp file nhạy cảm khi kết thúc job (Dù thành công hay lỗi)
-          trap 'rm -f ./downloaded_audio/cookies.txt' EXIT
-
-          if [ -n "$COOKIE_BASE64" ]; then
-            echo "$COOKIE_BASE64" | base64 -d > ./downloaded_audio/cookies.txt
-            echo "✅ Đã nạp Cookie thành công."
-          else
-            echo "⚠️ Cảnh báo: Chưa cấu hình Secret YOUTUBE_COOKIES."
-          fi
-
       - name: ⚙️ Cài đặt FFmpeg, Python, yt-dlp & Deno
         run: |
           set -eo pipefail
@@ -55,7 +41,7 @@ jobs:
           pip install --upgrade pip
           pip install --upgrade "yt-dlp[default]"
           
-          # Cài đặt Deno (môi trường JavaScript cho yt-dlp vượt cơ chế bảo mật mới)
+          # Cài đặt Deno (JS Runtime hỗ trợ giải mã thuật toán YouTube)
           curl -fsSL https://deno.land/install.sh | sh
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
@@ -65,6 +51,7 @@ jobs:
           YOUTUBE_URL: ${{ github.event.client_payload.youtube_url || inputs.youtube_url }}
           CUSTOM_FILENAME: ${{ github.event.client_payload.custom_filename || inputs.custom_filename }}
           AUDIO_FORMAT: ${{ github.event.client_payload.audio_format || inputs.audio_format || 'mp3' }}
+          COOKIE_BASE64: ${{ secrets.YOUTUBE_COOKIES }}
         run: |
           set -eo pipefail
 
@@ -75,9 +62,18 @@ jobs:
 
           cd downloaded_audio
           
+          # Giải mã Cookie trực tiếp tại bước này
           COOKIE_ARG=""
-          if [ -f "cookies.txt" ]; then
-            COOKIE_ARG="--cookies cookies.txt"
+          if [ -n "$COOKIE_BASE64" ]; then
+            echo "$COOKIE_BASE64" | base64 -d > cookies.txt
+            if [ -s cookies.txt ]; then
+              COOKIE_ARG="--cookies cookies.txt"
+              echo "✅ Đã nạp Cookie thành công."
+            else
+              echo "⚠️ Cảnh báo: File Cookie sau khi giải mã bị rỗng!"
+            fi
+          else
+            echo "⚠️ Cảnh báo: Chưa cấu hình Secret YOUTUBE_COOKIES."
           fi
 
           if [ -n "$CUSTOM_FILENAME" ]; then
@@ -87,10 +83,11 @@ jobs:
             OUTPUT_TEMPLATE="%(title)s_[%(id)s].%(ext)s"
           fi
 
-          # Nạp đường dẫn Deno vào biến PATH trong tiến trình chạy
           export PATH="$HOME/.deno/bin:$PATH"
 
+          # Chạy yt-dlp với Cookie và Giả lập Client di động
           yt-dlp $COOKIE_ARG \
+            --extractor-args "youtube:player_client=ios,android,mweb" \
             --remote-components ejs:github \
             -x \
             --audio-format "$AUDIO_FORMAT" \
@@ -103,6 +100,9 @@ jobs:
             --postprocessor-args "ExtractAudio:-map_metadata -1" \
             -o "$OUTPUT_TEMPLATE" \
             "$YOUTUBE_URL"
+          
+          # Xóa ngay file cookies sau khi yt-dlp tải xong
+          rm -f cookies.txt
           
           FILE_NAME=$(ls -1 | grep -v "cookies.txt" | head -n 1)
           if [ -z "$FILE_NAME" ]; then
@@ -135,6 +135,11 @@ jobs:
             --content-type "${{ steps.download.outputs.mimetype }}" \
             --metadata-directive REPLACE
 
+      - name: 🧹 Dọn dẹp an toàn dữ liệu nhạy cảm
+        if: always()
+        run: |
+          rm -f ./downloaded_audio/cookies.txt
+
       - name: 🎉 Báo cáo kết quả & Khởi tạo Link
         env:
           PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
@@ -146,7 +151,7 @@ jobs:
           echo "- **Tên file:** \`$FILE_NAME\`" >> $GITHUB_STEP_SUMMARY
           
           if [ -n "$PUBLIC_DOMAIN" ]; then
-            CLEAN_DOMAIN=$(echo "$PUBLIC_DOMAIN" \vert{} sed 's/\/$//')
+            CLEAN_DOMAIN=$(echo "$PUBLIC_DOMAIN" | sed 's/\/$//')
             ENCODED_FILE=$(jq -nr --arg v "$FILE_NAME" '$v|@uri')
             PUBLIC_URL="$CLEAN_DOMAIN/$ENCODED_FILE"
             
