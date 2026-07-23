@@ -108,7 +108,7 @@ Vào Repo trên GitHub -> **Settings** -> **Secrets and variables** -> **Actions
 2. Chọn Repository của bạn -> **Begin setup**.
 3. Build settings:
    - **Framework preset:** `None`
-   - **Build output directory:** `.`
+   - **Build output directory:** `/`
 4. Tại **Environment variables**, thêm 3 biến:
 
 | Variable Name | Value |
