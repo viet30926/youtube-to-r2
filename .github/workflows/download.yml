@@ -1,0 +1,121 @@
+name: ⚡ Enterprise YouTube to R2 Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      youtube_url:
+        description: '🔗 Đường dẫn (URL) video YouTube'
+        required: true
+        type: string
+      custom_filename:
+        description: '📝 Tên file (Để trống nếu dùng tên gốc. Không cần ghi đuôi)'
+        required: false
+        type: string
+      audio_format:
+        description: '🎵 Định dạng âm thanh'
+        required: true
+        default: 'mp3'
+        type: choice
+        options:
+          - mp3
+          - m4a
+          - wav
+
+jobs:
+  download-and-upload:
+    name: 🚀 Fetch & Upload
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧹 Chuẩn bị không gian làm việc
+        run: mkdir -p ./downloaded_audio
+
+      - name: ⚙️ Cài đặt yt-dlp (Sử dụng FFmpeg có sẵn của GitHub)
+        run: |
+          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+          sudo chmod a+rx /usr/local/bin/yt-dlp
+
+      - name: ⬇️ Tải Audio & Chuẩn hoá Metadata
+        id: download
+        env:
+          YOUTUBE_URL: ${{ inputs.youtube_url }}
+          CUSTOM_FILENAME: ${{ inputs.custom_filename }}
+          AUDIO_FORMAT: ${{ inputs.audio_format }}
+        run: |
+          cd downloaded_audio
+          
+          # 1. Lọc và chuẩn hoá tên file
+          if [ -n "$CUSTOM_FILENAME" ]; then
+            SAFE_NAME=$(echo "$CUSTOM_FILENAME" | sed -e 's/[^a-zA-Z0-9_.-]/_/g')
+            OUTPUT_TEMPLATE="${SAFE_NAME}.%(ext)s"
+          else
+            OUTPUT_TEMPLATE="%(title)s_[%(id)s].%(ext)s"
+          fi
+
+          # 2. Tải file (Bổ sung force-ipv4 chống Block từ YouTube)
+          yt-dlp -x \
+            --audio-format "$AUDIO_FORMAT" \
+            --audio-quality 0 \
+            --restrict-filenames \
+            --no-playlist \
+            --force-ipv4 \
+            --no-add-metadata \
+            --no-embed-thumbnail \
+            --postprocessor-args "ExtractAudio:-map_metadata -1" \
+            -o "$OUTPUT_TEMPLATE" \
+            "$YOUTUBE_URL"
+          
+          # 3. Lấy tên file chính xác
+          FILE_NAME=$(ls -1 | head -n 1)
+          if [ -z "$FILE_NAME" ]; then
+            echo "❌ Lỗi: Không tìm thấy file âm thanh sau khi tải!"
+            exit 1
+          fi
+          
+          # 4. Xác định Content-Type để nghe trực tiếp trên trình duyệt
+          if [ "$AUDIO_FORMAT" = "mp3" ]; then
+            MIME_TYPE="audio/mpeg"
+          elif [ "$AUDIO_FORMAT" = "m4a" ]; then
+            MIME_TYPE="audio/mp4"
+          elif [ "$AUDIO_FORMAT" = "wav" ]; then
+            MIME_TYPE="audio/wav"
+          fi
+          
+          # 5. Xuất các biến ra Github Env
+          echo "filename=$FILE_NAME" >> $GITHUB_OUTPUT
+          echo "mimetype=$MIME_TYPE" >> $GITHUB_OUTPUT
+
+      - name: ☁️ Upload lên Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          aws s3 cp ./downloaded_audio/ s3://${{ secrets.R2_BUCKET_NAME }}/ \
+            --endpoint-url ${{ secrets.R2_ENDPOINT_URL }} \
+            --recursive \
+            --content-type "${{ steps.download.outputs.mimetype }}" \
+            --metadata-directive REPLACE
+
+      - name: 🎉 Báo cáo kết quả & Khởi tạo Link
+        env:
+          PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
+          FILE_NAME: ${{ steps.download.outputs.filename }}
+        run: |
+          echo "### ✅ Tiến trình hoàn tất thành công!" >> $GITHUB_STEP_SUMMARY
+          echo "- **Video gốc:** ${{ inputs.youtube_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tên file:** \`$FILE_NAME\`" >> $GITHUB_STEP_SUMMARY
+          
+          # Xử lý Link Public (URL Encoding giúp link không bị gãy khi có ký tự đặc biệt)
+          if [ -n "$PUBLIC_DOMAIN" ]; then
+            CLEAN_DOMAIN=$(echo "$PUBLIC_DOMAIN" | sed 's/\/$//')
+            ENCODED_FILE=$(jq -nr --arg v "$FILE_NAME" '$v|@uri')
+            PUBLIC_URL="$CLEAN_DOMAIN/$ENCODED_FILE"
+            
+            echo "- **Link Stream trực tiếp:** [▶️ Bấm để Nghe / Tải]($PUBLIC_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "- **URL Raw:** \`$PUBLIC_URL\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Link trực tiếp:** ⚠️ Bạn chưa cấu hình biến \`R2_PUBLIC_DOMAIN\` trong Secrets." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "- **Trạng thái:** Dữ liệu thừa đã được dọn sạch 🧹" >> $GITHUB_STEP_SUMMARY
